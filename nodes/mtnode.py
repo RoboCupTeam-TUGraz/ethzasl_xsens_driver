@@ -98,6 +98,37 @@ class XSensDriver(object):
         # publish a string version of all data; to be parsed by clients
         self.str_pub = rospy.Publisher('imu_data_str', String, queue_size=10)
 
+        # predefinition of used variables
+        self.imu_msg = Imu()
+        self.imu_msg_old = Imu()
+        self.gps_msg = NavSatFix()
+        self.gps_msg_old = NavSatFix()
+        self.vel_msg = TwistStamped()
+        self.vel_msg_old = TwistStamped()
+        self.mag_msg = MagneticField()
+        self.mag_msg_old = MagneticField()
+        self.temp_msg = Temperature()
+        self.temp_msg_old = Temperature()
+        self.press_msg = FluidPressure()
+        self.press_msg_old = FluidPressure()
+        self.anin1_msg = UInt16()
+        self.anin1_msg_old = UInt16()
+        self.anin2_msg = UInt16()
+        self.anin2_msg_old = UInt16()
+        self.ecef_msg = PointStamped()
+        self.ecef_msg_old = PointStamped()
+
+    def store_previous_msgs(self):
+        self.imu_msg_old = self.imu_msg
+        self.gps_msg_old = self.gps_msg
+        self.vel_msg_old = self.vel_msg
+        self.mag_msg_old = self.mag_msg
+        self.temp_msg_old = self.temp_msg
+        self.press_msg_old = self.press_msg
+        self.anin1_msg_old = self.anin1_msg
+        self.anin2_msg_old = self.anin2_msg
+        self.ecef_msg_old = self.ecef_msg
+
     def reset_vars(self):
         self.imu_msg = Imu()
         self.imu_msg.orientation_covariance = (-1., )*9
@@ -252,6 +283,8 @@ class XSensDriver(object):
             '''
             self.pub_temp = True
             self.temp_msg.temperature = temp
+            if self.temp_msg.temperature == self.temp_msg_old.temperature:
+                self.pub_temp = False
 
         def fill_from_Calib(imu_data):
             '''Fill messages with information from 'calibrated' MTData block.'''
@@ -335,6 +368,10 @@ class XSensDriver(object):
             self.gps_msg.latitude = position_data['Lat']
             self.gps_msg.longitude = position_data['Lon']
             self.gps_msg.altitude = position_data['Alt']
+            if self.gps_msg.latitude == self.gps_msg_old.latitude and \
+               self.gps_msg.latitude == self.gps_msg_old.latitude and \
+               self.gps_msg.latitude == self.gps_msg_old.latitude:
+                self.pub_gps = False
 
         def fill_from_Vel(velocity_data):
             '''Fill messages with information from 'velocity' MTData block.'''
@@ -382,6 +419,8 @@ class XSensDriver(object):
             '''
             self.pub_temp = True
             self.temp_msg.temperature = o['Temp']
+            if self.temp_msg.temperature == self.temp_msg_old.temperature:
+                self.pub_temp = False
 
         def fill_from_Timestamp(o):
             '''Fill messages with information from 'Timestamp' MTData2 block.'''
@@ -486,6 +525,10 @@ class XSensDriver(object):
                 # altMsl is deprecated
                 alt = o.get('altEllipsoid', o.get('altMsl', 0))
                 self.gps_msg.altitude = alt
+                if self.gps_msg.latitude == self.gps_msg_old.latitude and \
+                   self.gps_msg.latitude == self.gps_msg_old.latitude and \
+                   self.gps_msg.latitude == self.gps_msg_old.latitude:
+                    self.pub_gps = False
             except KeyError:
                 pass
             try:
@@ -520,6 +563,10 @@ class XSensDriver(object):
                 self.gps_msg.longitude = o['lon']
                 self.gps_msg.altitude = o['height']/1e3
                 self.pub_gps = True
+                if self.gps_msg.latitude == self.gps_msg_old.latitude and \
+                   self.gps_msg.latitude == self.gps_msg_old.latitude and \
+                   self.gps_msg.latitude == self.gps_msg_old.latitude:
+                    self.pub_gps = False
                 # TODO velocity?
                 # TODO 2D heading?
                 # TODO DOP?
@@ -713,6 +760,8 @@ class XSensDriver(object):
             self.diag_pub.publish(self.diag_msg)
         # publish string representation
         self.str_pub.publish(str(data))
+
+        self.store_previous_msgs()
 
 
 def main():
