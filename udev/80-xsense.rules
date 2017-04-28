@@ -1,0 +1,1 @@
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="d38b", MODE="666", SYMLINK+="imu", GROUP="dialout"
