@@ -37,7 +37,7 @@ class XSensDriver(object):
 
         device = get_param('~device', 'auto')
         baudrate = get_param('~baudrate', 0)
-        timeout = get_param('~timeout', 0.002)
+        timeout = get_param('~timeout', 0.02)
         if device == 'auto':
             devs = mtdevice.find_devices()
             if devs:
@@ -83,6 +83,7 @@ class XSensDriver(object):
         # publishers created at first use to reduce topic clutter
         self.diag_pub = None
         self.imu_pub = None
+        self.pos_pub = None
         self.gps_pub = None
         self.vel_pub = None
         self.mag_pub = None
@@ -96,11 +97,13 @@ class XSensDriver(object):
         self.old_bGPS = 256  # publish GPS only if new
 
         # publish a string version of all data; to be parsed by clients
-        self.str_pub = rospy.Publisher('imu_data_str', String, queue_size=10)
+        self.str_pub = rospy.Publisher('imu/imu_data_str', String, queue_size=10)
 
         # predefinition of used variables
         self.imu_msg = Imu()
         self.imu_msg_old = Imu()
+        self.pos_msg = NavSatFix()
+        self.pos_msg_old = NavSatFix()
         self.gps_msg = NavSatFix()
         self.gps_msg_old = NavSatFix()
         self.vel_msg = TwistStamped()
@@ -118,8 +121,22 @@ class XSensDriver(object):
         self.ecef_msg = PointStamped()
         self.ecef_msg_old = PointStamped()
 
+        # triggers for new msg to publish
+        self.pub_imu = False
+        self.pub_pos = False
+        self.pub_gps = False
+        self.pub_vel = False
+        self.pub_mag = False
+        self.pub_temp = False
+        self.pub_press = False
+        self.pub_anin1 = False
+        self.pub_anin2 = False
+        self.pub_ecef = False
+        self.pub_diag = False
+
     def store_previous_msgs(self):
         self.imu_msg_old = self.imu_msg
+        self.pos_msg_old = self.pos_msg
         self.gps_msg_old = self.gps_msg
         self.vel_msg_old = self.vel_msg
         self.mag_msg_old = self.mag_msg
@@ -135,6 +152,8 @@ class XSensDriver(object):
         self.imu_msg.angular_velocity_covariance = (-1., )*9
         self.imu_msg.linear_acceleration_covariance = (-1., )*9
         self.pub_imu = False
+        self.pos_msg = NavSatFix()
+        self.pub_pos = False
         self.gps_msg = NavSatFix()
         self.pub_gps = False
         self.vel_msg = TwistStamped()
@@ -275,6 +294,11 @@ class XSensDriver(object):
                 self.gps_msg.latitude = rawgps_data['LAT']*1e-7
                 self.gps_msg.longitude = rawgps_data['LON']*1e-7
                 self.gps_msg.altitude = rawgps_data['ALT']*1e-3
+
+                self.gps_msg.position_covariance_type = self.gps_msg.COVARIANCE_TYPE_DIAGONAL_KNOWN
+                self.gps_msg.position_covariance = [(rawgps_data['Hacc']*1e-3) ** 2, 0., 0.,
+                                                    0., (rawgps_data['Hacc']*1e-3) ** 2, 0.,
+                                                    0., 0., (rawgps_data['Vacc']*1e-3) ** 2]
                 # NED vel # TODO?
             self.old_bGPS = rawgps_data['bGPS']
 
@@ -364,14 +388,14 @@ class XSensDriver(object):
 
         def fill_from_Pos(position_data):
             '''Fill messages with information from 'position' MTData block.'''
-            self.pub_gps = True
-            self.gps_msg.latitude = position_data['Lat']
-            self.gps_msg.longitude = position_data['Lon']
-            self.gps_msg.altitude = position_data['Alt']
-            if self.gps_msg.latitude == self.gps_msg_old.latitude and \
-               self.gps_msg.latitude == self.gps_msg_old.latitude and \
-               self.gps_msg.latitude == self.gps_msg_old.latitude:
-                self.pub_gps = False
+            self.pub_pos = True
+            self.pos_msg.latitude = position_data['Lat']
+            self.pos_msg.longitude = position_data['Lon']
+            self.pos_msg.altitude = position_data['Alt']
+            if self.pos_msg.latitude == self.pos_msg_old.latitude and \
+               self.pos_msg.latitude == self.pos_msg_old.latitude and \
+               self.pos_msg.latitude == self.pos_msg_old.latitude:
+                self.pub_pos = False
 
         def fill_from_Vel(velocity_data):
             '''Fill messages with information from 'velocity' MTData block.'''
@@ -519,16 +543,16 @@ class XSensDriver(object):
         def fill_from_Position(o):
             '''Fill messages with information from 'Position' MTData2 block.'''
             try:
-                self.gps_msg.latitude = o['lat']
-                self.gps_msg.longitude = o['lon']
-                self.pub_gps = True
+                self.pos_msg.latitude = o['lat']
+                self.pos_msg.longitude = o['lon']
+                self.pub_pos = True
                 # altMsl is deprecated
                 alt = o.get('altEllipsoid', o.get('altMsl', 0))
-                self.gps_msg.altitude = alt
-                if self.gps_msg.latitude == self.gps_msg_old.latitude and \
-                   self.gps_msg.latitude == self.gps_msg_old.latitude and \
-                   self.gps_msg.latitude == self.gps_msg_old.latitude:
-                    self.pub_gps = False
+                self.pos_msg.altitude = alt
+                if self.pos_msg.latitude == self.pos_msg_old.latitude and \
+                   self.pos_msg.latitude == self.pos_msg_old.latitude and \
+                   self.pos_msg.latitude == self.pos_msg_old.latitude:
+                    self.pub_pos = False
             except KeyError:
                 pass
             try:
@@ -707,56 +731,53 @@ class XSensDriver(object):
             if self.imu_pub is None:
                 self.imu_pub = rospy.Publisher('imu/data', Imu, queue_size=10)
             self.imu_pub.publish(self.imu_msg)
+        if self.pub_pos:
+            self.pos_msg.header = self.h
+            if self.pos_pub is None:
+                self.pos_pub = rospy.Publisher('imu/fix', NavSatFix, queue_size=10)
+            self.pos_pub.publish(self.pos_msg)
         if self.pub_gps:
             self.gps_msg.header = self.h
             if self.gps_pub is None:
-                self.gps_pub = rospy.Publisher('fix', NavSatFix, queue_size=10)
+                self.gps_pub = rospy.Publisher('imu/fix_raw', NavSatFix, queue_size=10)
             self.gps_pub.publish(self.gps_msg)
         if self.pub_vel:
             self.vel_msg.header = self.h
             if self.vel_pub is None:
-                self.vel_pub = rospy.Publisher('velocity', TwistStamped,
-                                               queue_size=10)
+                self.vel_pub = rospy.Publisher('imu/velocity', TwistStamped, queue_size=10)
             self.vel_pub.publish(self.vel_msg)
         if self.pub_mag:
             self.mag_msg.header = self.h
             if self.mag_pub is None:
-                self.mag_pub = rospy.Publisher('imu/mag', MagneticField,
-                                               queue_size=10)
+                self.mag_pub = rospy.Publisher('imu/magnetic', MagneticField, queue_size=10)
             self.mag_pub.publish(self.mag_msg)
         if self.pub_temp:
             self.temp_msg.header = self.h
             if self.temp_pub is None:
-                self.temp_pub = rospy.Publisher('temperature', Temperature,
-                                                queue_size=10)
+                self.temp_pub = rospy.Publisher('imu/temperature', Temperature, queue_size=10)
             self.temp_pub.publish(self.temp_msg)
         if self.pub_press:
             self.press_msg.header = self.h
             if self.press_pub is None:
-                self.press_pub = rospy.Publisher('pressure', FluidPressure,
-                                                 queue_size=10)
+                self.press_pub = rospy.Publisher('imu/pressure', FluidPressure, queue_size=10)
             self.press_pub.publish(self.press_msg)
         if self.pub_anin1:
             if self.analog_in1_pub is None:
-                self.analog_in1_pub = rospy.Publisher('analog_in1',
-                                                      UInt16, queue_size=10)
+                self.analog_in1_pub = rospy.Publisher('imu/analog_in1', UInt16, queue_size=10)
             self.analog_in1_pub.publish(self.anin1_msg)
         if self.pub_anin2:
             if self.analog_in2_pub is None:
-                self.analog_in2_pub = rospy.Publisher('analog_in2', UInt16,
-                                                      queue_size=10)
+                self.analog_in2_pub = rospy.Publisher('imu/analog_in2', UInt16, queue_size=10)
             self.analog_in2_pub.publish(self.anin2_msg)
         if self.pub_ecef:
             self.ecef_msg.header = self.h
             if self.ecef_pub is None:
-                self.ecef_pub = rospy.Publisher('ecef', PointStamped,
-                                                queue_size=10)
+                self.ecef_pub = rospy.Publisher('imu/ecef', PointStamped, queue_size=10)
             self.ecef_pub.publish(self.ecef_msg)
         if self.pub_diag:
             self.diag_msg.header = self.h
             if self.diag_pub is None:
-                self.diag_pub = rospy.Publisher('/diagnostics', DiagnosticArray,
-                                                queue_size=10)
+                self.diag_pub = rospy.Publisher('/diagnostics', DiagnosticArray, queue_size=10)
             self.diag_pub.publish(self.diag_msg)
         # publish string representation
         self.str_pub.publish(str(data))

@@ -19,25 +19,21 @@ from mtdef import MID, OutputMode, OutputSettings, MTException, Baudrates, \
 class MTDevice(object):
     """XSens MT device communication object."""
 
-    def __init__(self, port, baudrate=115200, timeout=0.002, autoconf=True,
-                 config_mode=False, verbose=False):
+    def __init__(self, port, baudrate=115200, timeout=0.02, autoconf=True, config_mode=False, verbose=False):
         """Open device."""
         self.verbose = verbose
         # serial interface to the device
         try:
-            self.device = serial.Serial(port, baudrate, timeout=timeout,
-                                        writeTimeout=timeout)
+            self.device = serial.Serial(port, baudrate, timeout=timeout, writeTimeout=timeout)
         except IOError:
             # FIXME with pyserial3 we might need some specific flags
-            self.device = serial.Serial(port, baudrate, timeout=timeout,
-                                        writeTimeout=timeout, rtscts=True,
-                                        dsrdtr=True)
+            self.device = serial.Serial(port, baudrate, timeout=timeout, writeTimeout=timeout, rtscts=True, dsrdtr=True)
         print "Waiting for MTdevice to be ready!"
         time.sleep(1)
         self.device.flushInput()    # flush to make sure the port is ready TODO
         self.device.flushOutput()    # flush to make sure the port is ready TODO
         # timeout for communication
-        self.timeout = 100*timeout
+        self.timeout = timeout
         # state of the device
         self.state = None
         if autoconf:
@@ -84,7 +80,7 @@ class MTDevice(object):
             if len(buf) == size:
                 return buf
             if self.verbose:
-                print "waiting for %d bytes, got %d so far: [%s]" % \
+                print "waiting for %d byte(s), got %d so far: [%s]" % \
                     (size, len(buf), ' '.join('%02X' % v for v in buf))
         raise MTTimeoutException("waiting for message")
 
@@ -633,8 +629,7 @@ class MTDevice(object):
         elif mid == MID.MTData2:
             return self.parse_MTData2(data)
         else:
-            raise MTException("unknown data message: mid=0x%02X (%s)." %
-                              (mid, getMIDName(mid)))
+            raise MTException("unknown data message: mid=0x%02X (%s)." % (mid, getMIDName(mid)))
 
     def parse_MTData2(self, data):
         # Functions to parse each type of packet
