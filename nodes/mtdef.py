@@ -277,6 +277,14 @@ class MTException(Exception):
         return self.message
 
 
+class MTDeviceNotAvailable(MTException):
+    def __init__(self, message):
+        self.message = message
+
+    def __str__(self):
+        return 'Device not available: %s' % self.message
+
+
 class MTTimeoutException(MTException):
     def __init__(self, message):
         self.message = message

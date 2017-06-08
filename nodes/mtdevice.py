@@ -10,7 +10,7 @@ import pprint
 
 from mtdef import MID, OutputMode, OutputSettings, MTException, Baudrates, \
     XDIGroup, getMIDName, DeviceState, DeprecatedMID, MTErrorMessage, \
-    MTTimeoutException
+    MTTimeoutException, MTDeviceNotAvailable
 
 
 ################################################################
@@ -27,7 +27,10 @@ class MTDevice(object):
             self.device = serial.Serial(port, baudrate, timeout=timeout, writeTimeout=timeout)
         except IOError:
             # FIXME with pyserial3 we might need some specific flags
-            self.device = serial.Serial(port, baudrate, timeout=timeout, writeTimeout=timeout, rtscts=True, dsrdtr=True)
+            try:
+                self.device = serial.Serial(port, baudrate, timeout=timeout, writeTimeout=timeout, rtscts=True, dsrdtr=True)
+            except IOError:
+                raise MTDeviceNotAvailable("Device on '" + port + "' can not be opend!")
         print "Waiting for MTdevice to be ready!"
         time.sleep(1)
         self.device.flushInput()    # flush to make sure the port is ready TODO

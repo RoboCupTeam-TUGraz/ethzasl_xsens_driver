@@ -788,8 +788,13 @@ class XSensDriver(object):
 def main():
     '''Create a ROS node and instantiate the class.'''
     rospy.init_node('xsens_driver')
-    driver = XSensDriver()
-    driver.spin()
+    while not rospy.is_shutdown():
+        try:
+            driver = XSensDriver()
+            driver.spin()
+        except mtdef.MTDeviceNotAvailable as e:
+            rospy.logerr(e)
+        rospy.sleep(rospy.Duration(1.0))
 
 
 if __name__ == '__main__':
